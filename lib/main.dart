@@ -21,6 +21,17 @@ class AuthApp extends StatelessWidget {
   }
 }
 
+class User {
+  final String username;
+  final String email;
+  final String password;
+  final String role;
+  User({required this.username, required this.email, required this.password, required this.role});
+}
+
+// In-memory user storage
+final List<User> registeredUsers = [];
+
 class AuthPage extends StatelessWidget {
   const AuthPage({super.key});
 
@@ -41,7 +52,7 @@ class AuthPage extends StatelessWidget {
           appBar: AppBar(
             backgroundColor: Colors.transparent,
             elevation: 0,
-            title: const Text('Welcome', style: TextStyle(fontWeight: FontWeight.bold)),
+            title: const Text('Practice Mode', style: TextStyle(fontWeight: FontWeight.bold)),
             centerTitle: true,
             bottom: const TabBar(
               indicatorColor: Colors.white,
@@ -64,6 +75,8 @@ class AuthPage extends StatelessWidget {
   }
 }
 
+const List<String> roles = ['User', 'Admin', 'Guest'];
+
 class LoginForm extends StatefulWidget {
   const LoginForm({super.key});
 
@@ -75,6 +88,7 @@ class _LoginFormState extends State<LoginForm> {
   final _formKey = GlobalKey<FormState>();
   String email = '';
   String password = '';
+  String? role;
   bool _obscure = true;
 
   @override
@@ -127,6 +141,29 @@ class _LoginFormState extends State<LoginForm> {
                         value == null || value.isEmpty ? 'Enter your password' : null,
                     onSaved: (value) => password = value ?? '',
                   ),
+                  const SizedBox(height: 18),
+                  DropdownButtonFormField<String>(
+                    decoration: const InputDecoration(
+                      labelText: 'Role',
+                      prefixIcon: Icon(Icons.person_outline),
+                      border: OutlineInputBorder(),
+                    ),
+                    value: role,
+                    items: roles
+                        .map((r) => DropdownMenuItem(
+                              value: r,
+                              child: Text(r),
+                            ))
+                        .toList(),
+                    onChanged: (value) {
+                      setState(() {
+                        role = value;
+                      });
+                    },
+                    validator: (value) =>
+                        value == null || value.isEmpty ? 'Select your role' : null,
+                    onSaved: (value) => role = value,
+                  ),
                   const SizedBox(height: 28),
                   SizedBox(
                     width: double.infinity,
@@ -143,9 +180,30 @@ class _LoginFormState extends State<LoginForm> {
                       onPressed: () {
                         if (_formKey.currentState!.validate()) {
                           _formKey.currentState!.save();
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('Logged in as $email')),
+                          // Check if user exists and matches
+                          final user = registeredUsers.firstWhere(
+                            (u) => u.email == email && u.password == password && u.role == role,
+                            orElse: () => User(username: '', email: '', password: '', role: ''),
                           );
+                          if (user.email.isNotEmpty) {
+                            // Navigate to dashboard based on role
+                            Navigator.pushReplacement(
+                              context,
+                              MaterialPageRoute(builder: (context) {
+                                if (user.role == 'Admin') {
+                                  return AdminDashboard(user: user);
+                                } else if (user.role == 'User') {
+                                  return UserDashboard(user: user);
+                                } else {
+                                  return GuestDashboard(user: user);
+                                }
+                              }),
+                            );
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Login failed: No matching user found.')),
+                            );
+                          }
                         }
                       },
                       child: const Text('Login'),
@@ -173,6 +231,7 @@ class _RegisterFormState extends State<RegisterForm> {
   String username = '';
   String email = '';
   String password = '';
+  String? role;
   bool _obscure = true;
 
   @override
@@ -236,6 +295,29 @@ class _RegisterFormState extends State<RegisterForm> {
                         value == null || value.isEmpty ? 'Enter your password' : null,
                     onSaved: (value) => password = value ?? '',
                   ),
+                  const SizedBox(height: 18),
+                  DropdownButtonFormField<String>(
+                    decoration: const InputDecoration(
+                      labelText: 'Role',
+                      prefixIcon: Icon(Icons.person_outline),
+                      border: OutlineInputBorder(),
+                    ),
+                    value: role,
+                    items: roles
+                        .map((r) => DropdownMenuItem(
+                              value: r,
+                              child: Text(r),
+                            ))
+                        .toList(),
+                    onChanged: (value) {
+                      setState(() {
+                        role = value;
+                      });
+                    },
+                    validator: (value) =>
+                        value == null || value.isEmpty ? 'Select your role' : null,
+                    onSaved: (value) => role = value,
+                  ),
                   const SizedBox(height: 28),
                   SizedBox(
                     width: double.infinity,
@@ -252,9 +334,23 @@ class _RegisterFormState extends State<RegisterForm> {
                       onPressed: () {
                         if (_formKey.currentState!.validate()) {
                           _formKey.currentState!.save();
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('Registered as $username')),
-                          );
+                          // Check if email already exists
+                          final exists = registeredUsers.any((u) => u.email == email && u.role == role);
+                          if (exists) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('User with this email and role already exists.')),
+                            );
+                          } else {
+                            registeredUsers.add(User(
+                              username: username,
+                              email: email,
+                              password: password,
+                              role: role!,
+                            ));
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Registered as $username ($role)')),
+                            );
+                          }
                         }
                       },
                       child: const Text('Register'),
@@ -264,6 +360,113 @@ class _RegisterFormState extends State<RegisterForm> {
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+// --- Dashboard Pages ---
+
+class UserDashboard extends StatelessWidget {
+  final User user;
+  const UserDashboard({super.key, required this.user});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('User Dashboard'),
+        backgroundColor: Colors.green,
+      ),
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text('Welcome, ${user.username}!', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 16),
+            Text('You are logged in as a ${user.role}.', style: const TextStyle(fontSize: 18)),
+            const SizedBox(height: 32),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(builder: (context) => const AuthApp()), // Go back to login
+                );
+              },
+              child: const Text('Logout'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class AdminDashboard extends StatelessWidget {
+  final User user;
+  const AdminDashboard({super.key, required this.user});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Admin Dashboard'),
+        backgroundColor: Colors.red,
+      ),
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text('Welcome, Admin ${user.username}!', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 16),
+            Text('You have administrative privileges.', style: const TextStyle(fontSize: 18)),
+            const SizedBox(height: 32),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(builder: (context) => const AuthApp()), // Go back to login
+                );
+              },
+              child: const Text('Logout'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class GuestDashboard extends StatelessWidget {
+  final User user;
+  const GuestDashboard({super.key, required this.user});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Guest Dashboard'),
+        backgroundColor: Colors.orange,
+      ),
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text('Welcome, Guest ${user.username}!', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 16),
+            Text('You have limited access.', style: const TextStyle(fontSize: 18)),
+            const SizedBox(height: 32),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(builder: (context) => const AuthApp()), // Go back to login
+                );
+              },
+              child: const Text('Logout'),
+            ),
+          ],
         ),
       ),
     );
